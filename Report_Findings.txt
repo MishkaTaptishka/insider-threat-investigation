@@ -1,0 +1,41 @@
+MITRE ATT&CK Mapping
+
+Tactic: Collection  
+Technique: [T1560.001] Archive via Utility  
+- A `.csv` file named using the pattern `employee-data-temp<timestamp>` was created.  
+- Shortly afterward, a corresponding `.zip` archive was created using 7-Zip, silently installed via PowerShell.  
+- Files were then moved from `C:\ProgramData\` to `C:\ProgramData\backup\`, indicating staging for exfiltration.
+
+Tactic: Exfiltration  
+Technique: [T1048.003] Exfiltration Over Alternative Protocol – Exfiltration to Cloud Storage  
+- PowerShell command used to upload sensitive data via HTTP PUT request to Azure Blob Storage.  
+- Targeted endpoint: `https://sacyberrangedanger.blob.core.windows.net/stolencompanydata/employee-data.zip`  
+- Command-line pattern matches known use of `Invoke-WebRequest` and custom headers to simulate authorized blob upload.
+
+Tactic: Execution  
+Technique: [T1059.001] PowerShell  
+- Script `exfiltratedata.ps1` executed by `resend7393-vm`, initiated under the user account associated with the host.  
+- Execution included: file creation, archiving, upload, and cleanup using PowerShell exclusively.
+
+Tactic: Defense Evasion  
+Technique: [T1218.007] Signed Binary Proxy Execution – Msiexec (Implied by use of system utilities for staging and stealth archiving)  
+- Use of legitimate 7-Zip installer and Windows-native PowerShell functionality to reduce detection likelihood.  
+- Artifacts moved to non-standard backup directory for hiding post-exfil.
+
+Findings:  
+- The employee’s device (`resend7393-vm`) shows clear evidence of data staging, archiving, and exfiltration activity within the last 24 hours.  
+- The script `exfiltratedata.ps1` created synthetic employee data, archived it using 7-Zip, and transferred the archive to a remote Azure Blob Storage location.  
+- All actions were performed under a valid user context, using standard Windows tools in a way that bypasses basic security monitoring.
+
+Recommendations:  
+- Immediately isolate `resend7393-vm` for forensic analysis.  
+- Audit Azure storage logs for connections from internal IPs and unauthorized uploads.  
+- Search environment for similar filenames or `Invoke-WebRequest` usage in PowerShell logs.  
+- Remove unnecessary outbound HTTP/HTTPS access for sensitive endpoints.  
+- Deploy DLP (Data Loss Prevention) rules and alerts for file operations involving known sensitive keywords (e.g., employee, SSN).  
+- Monitor for silent installations of archiving utilities and execution of unauthorized PowerShell scripts.
+
+Set up alerts for:  
+- PowerShell scripts containing `Invoke-WebRequest` or Blob Storage interactions  
+- Silent 7-Zip or executable installations  
+- Network connections to Azure Blob Storage domains

@@ -1,0 +1,42 @@
+// investigate file activity on employee's device "resend7393-vm"
+// review all file events in the last 24 hours for suspicious behavior
+DeviceFileEvents
+| where TimeGenerated > ago(24h)
+| where DeviceName == "resend7393-vm"
+| order by TimeGenerated desc
+
+// narrow scope to file activity related to potential data exfiltration
+// filter for files with naming pattern "employee-data-"
+// review key file operation metadata and process context
+DeviceFileEvents
+| where TimeGenerated > ago(24h)
+| where DeviceName == "resend7393-vm"
+| where FileName contains "employee-data-"
+| project TimeGenerated, ActionType, FileName, PreviousFileName, FolderPath, PreviousFolderPath, InitiatingProcessAccountName, InitiatingProcessCommandLine
+| order by TimeGenerated desc
+// Observation:
+// - A .csv file is created using the pattern: employee-data-temp<timestamp>
+// - A corresponding .zip file is created: employee-data-<timestamp>
+// - Files are moved from C:\ProgramData\ to C:\ProgramData\backup\
+// - Indicates both manual/scripted file creation and archiving behavior
+
+// correlate file and network activity on "resend7393-vm"
+// join DeviceFileEvents with DeviceNetworkEvents to track execution and possible exfiltration
+let device_file_events =
+    DeviceFileEvents
+    | where TimeGenerated > ago(24h)
+    | where DeviceName == "resend7393-vm"
+    | where FileName contains "employee-data-"
+    | project TimeGenerated, DeviceName, FileName, FolderPath, InitiatingProcessAccountName;
+let device_network_events =
+    DeviceNetworkEvents
+    | where DeviceName == "resend7393-vm"
+    | where InitiatingProcessCommandLine contains "Invoke-WebRequest"
+    | project TimeGenerated, DeviceName, ActionType, InitiatingProcessCommandLine, LocalIP, RemoteIP, RemoteUrl;
+device_file_events
+| join kind=leftouter device_network_events on DeviceName
+| project TimeGenerated, DeviceName, ActionType, FileName, FolderPath, InitiatingProcessAccountName, InitiatingProcessCommandLine, LocalIP, RemoteIP, RemoteUrl
+// findings:
+// - PowerShell is used to silently install 7-Zip
+// - a script named "exfiltratedata.ps1" is executed
+// - files containing sensitive data are compressed and exfiltrated via HTTP POST to a remote Azure Blob URL
